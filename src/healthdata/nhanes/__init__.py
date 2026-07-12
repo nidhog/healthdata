@@ -5,6 +5,7 @@ from .reader import read_nhanes_data, search_nhanes_local_data
 
 __all__ = [
     "download_nhanes_data",
+    "download_and_extract_docs",
     "get_file_links_for_component",
     "read_nhanes_data",
     "search_nhanes_local_data",
