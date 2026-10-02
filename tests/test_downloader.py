@@ -37,12 +37,13 @@ def test_parse_nhanes_doc_variables_extracts_basic_fields():
     assert rows[0]["variable_name"] == "SEQN"
     assert rows[0]["label"] == "Respondent sequence number"
     assert rows[0]["description"] == "Unique participant identifier"
+    assert "value_meanings" in rows[0]
     assert rows[0]["link"] == "https://example.org/doc.htm"
 
 
 def test_get_file_links_for_component_filters_years(monkeypatch):
     # On NHANES website, the files are linked in this format:
-    html = """
+    expected_html = """
     <table>
       <tr>
         <td>2017-2018</td>
@@ -59,7 +60,7 @@ def test_get_file_links_for_component_filters_years(monkeypatch):
 
     def _fake_get(url, params=None):
         assert params == {"Component": "Demographics"}
-        return _DummyResponse(html)
+        return _DummyResponse(expected_html)
 
     monkeypatch.setattr("healthdata.nhanes.downloader.requests.get", _fake_get)
 

@@ -1,7 +1,8 @@
 # Health Data Downloader Package
 The Health Data Downloader is a Python package that makes it easy to download and read real world health data.
 
-At this stage, the only data available is data from NHANES (National Health and Nutrition Examination Survey), more will be available soon.
+Current data sources supported:
+* **NHANES** National Health and Nutrition Examination Survey (CDC)
 ## The NHANES Submodule
 If you want to download health data from NHANES this module can help you not only download the data but also add documentation from the official NHANES website, and read this data into a pandas dataframe.
 
@@ -47,9 +48,8 @@ inventory = search_nhanes_local_data(search_dir="nhanes_data")
 print(inventory.head())
 ```
 That's all folks! Now you will see that your dataframe already includes documentation.
-
 ## Current caveats
-- HTML codebook parsing depends on current NHANES page text patterns; CDC page structure changes may require parser updates.
+- HTML codebook parsing depends on current NHANES page text patterns. CDC page structure changes may require parser updates.
 - Network errors and partial downloads are not retried automatically.
 
 ## License

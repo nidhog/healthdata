@@ -2,6 +2,7 @@ import csv
 import logging
 import os
 import re
+import json
 from typing import List, Optional, Union
 from urllib.parse import urlparse
 
@@ -56,7 +57,7 @@ def download_file(url: str, out_path: str):
 
 def parse_nhanes_doc_variables(doc_html: str, doc_url: str):
     """
-    Parse NHANES doc HTML into: variable_name, label, description, link.
+    Parse NHANES doc HTML into: variable_name, label, description, value_meanings, link.
 
     This extracts metadata that is not available in the XPT files.
 
@@ -64,25 +65,70 @@ def parse_nhanes_doc_variables(doc_html: str, doc_url: str):
     """
     soup = BeautifulSoup(doc_html, "html.parser")
     text = soup.get_text("\n")
+    text = re.sub(r"\r", "", text)
     text = re.sub(r"[ \t]+", " ", text)
 
-    pattern = re.compile(
-        r"Variable Name:\s*(?P<var>[A-Za-z0-9_]+)\s*"
-        r"SAS Label:\s*(?P<label>.*?)\s*"
-        r"English Text:\s*(?P<desc>.*?)(?=\s*English Instructions:|\s*Target:|\s*Code or Value|\Z)",
-        re.DOTALL,
-    )
-
     rows = []
-    for m in pattern.finditer(text):
-        var = m.group("var").strip()
-        label = re.sub(r"\s+", " ", m.group("label")).strip()
-        desc = re.sub(r"\s+", " ", m.group("desc")).strip()
+    chunks = re.split(r"(?=\bVariable Name:\s*[A-Za-z0-9_]+)", text)
+    for chunk in chunks:
+        chunk = chunk.strip()
+        if not chunk.startswith("Variable Name:"):
+            continue
+
+        var_match = re.search(r"Variable Name:\s*(?P<var>[A-Za-z0-9_]+)", chunk)
+        if not var_match:
+            continue
+        var = var_match.group("var").strip()
+
+        label_match = re.search(
+            r"SAS Label:\s*(?P<label>.*?)(?=\n\s*English Text:|\n\s*English Instructions:|\n\s*Target:|\n\s*Code or Value|\Z)",
+            chunk,
+            re.DOTALL,
+        )
+        desc_match = re.search(
+            r"English Text:\s*(?P<desc>.*?)(?=\n\s*English Instructions:|\n\s*Target:|\n\s*Code or Value|\Z)",
+            chunk,
+            re.DOTALL,
+        )
+
+        label = re.sub(r"\s+", " ", label_match.group("label")).strip() if label_match else ""
+        desc = re.sub(r"\s+", " ", desc_match.group("desc")).strip() if desc_match else ""
+
+        value_meanings = []
+        value_section = re.search(
+            r"Code or Value\s*(?P<section>.*?)(?=\n\s*Variable Name:|\Z)",
+            chunk,
+            re.DOTALL,
+        )
+        if value_section:
+            section_text = value_section.group("section")
+            # Common NHANES rows are represented as: code whitespace value-description.
+            for line in [ln.strip() for ln in section_text.splitlines() if ln.strip()]:
+                if line.lower() in {
+                    "value description",
+                    "unweighted count",
+                    "weighted percent",
+                    "weighted frequency",
+                    "cumulative",
+                    "skip to item",
+                }:
+                    continue
+                m = re.match(r"^(?P<code>[-+A-Za-z0-9\.]+)\s{1,}(?P<meaning>.+)$", line)
+                if not m:
+                    continue
+                value_meanings.append(
+                    {
+                        "code": m.group("code").strip(),
+                        "meaning": re.sub(r"\s+", " ", m.group("meaning")).strip(),
+                    }
+                )
+
         rows.append(
             {
                 "variable_name": var,
                 "label": label,
                 "description": desc,
+                "value_meanings": json.dumps(value_meanings, ensure_ascii=False) if value_meanings else "",
                 "link": doc_url,
             }
         )
@@ -101,7 +147,10 @@ def download_and_extract_docs(doc_url: str, out_dir: str):
     
     ensure_dir(os.path.dirname(out_csv))
     with open(out_csv, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=["variable_name", "label", "description", "link"])
+        w = csv.DictWriter(
+            f,
+            fieldnames=["variable_name", "label", "description", "value_meanings", "link"],
+        )
         w.writeheader()
         w.writerows(rows)
     print(f"> [SAVED] Docs CSV saved: {out_csv}")
