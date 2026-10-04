@@ -52,10 +52,13 @@ That's all folks! Now you will see that your dataframe already includes document
 - HTML codebook parsing depends on current NHANES page text patterns. CDC page structure changes may require parser updates.
 - Network errors and partial downloads are not retried automatically.
 
-## License
-This project is open source and free for personal, academic, and non-commercial use.
+## Upcoming Additions
+Planned additions include NCBI GEO and other open health and biomedical datasets. The current release supports NHANES only.
 
-For commercial use, you must contact the author first to obtain permission.
+## License
+This project is licensed under the [MIT License](LICENSE). Commercial use is permitted under its terms. Downloaded datasets may be subject to separate terms set by their respective providers.
+
+For paid support or consulting, contact the author at contact@ismail.bio.
 
 ## Author
 [Ismail Elouafiq](https://ismail.bio)

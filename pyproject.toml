@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "healthdata"
+version = "0.1.0"
+description = "Download and read NHANES health survey data."
+readme = "README.md"
+license = "LicenseRef-Health-Data-Downloader"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Ismail Elouafiq", email = "contact@ismail.bio" },
+]
+requires-python = ">=3.9"
+dependencies = [
+    "pandas",
+    "requests",
+    "beautifulsoup4",
+    "tqdm",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
+
+[project.urls]
+Homepage = "https://github.com/nidhog/healthdata"
+Repository = "https://github.com/nidhog/healthdata"
+Documentation = "https://github.com/nidhog/healthdata/tree/main/docs/nhanes"
+Issues = "https://github.com/nidhog/healthdata/issues"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+packages = ["healthdata", "healthdata.nhanes"]
+
+[tool.setuptools.package-data]
+healthdata = []
+"healthdata.nhanes" = []
