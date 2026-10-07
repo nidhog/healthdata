@@ -1,4 +1,9 @@
+import csv
+import json
+
 from healthdata.nhanes.downloader import (
+    download_and_extract_docs,
+    download_nhanes_data,
     extract_date_from_url,
     get_file_links_for_component,
     parse_nhanes_doc_variables,
@@ -41,6 +46,26 @@ def test_parse_nhanes_doc_variables_extracts_basic_fields():
     assert rows[0]["link"] == "https://example.org/doc.htm"
 
 
+def test_parse_value_table_keeps_codes_and_labels_not_counts():
+    html = """
+    <div><dl><dt>Variable Name:</dt><dd>RIAGENDR</dd>
+    <dt>SAS Label:</dt><dd>Gender</dd>
+    <dt>English Text:</dt><dd>Gender of the participant.</dd></dl>
+    <table><thead><tr><th>Code or Value</th><th>Value Description</th>
+    <th>Count</th><th>Cumulative</th><th>Skip to Item</th></tr></thead>
+    <tbody><tr><td>1</td><td>Male</td><td>4611</td><td>4611</td><td></td></tr>
+    <tr><td>2</td><td>Female</td><td>4643</td><td>9254</td><td></td></tr>
+    <tr><td>.</td><td>Missing</td><td>0</td><td>9254</td><td></td></tr></tbody></table></div>
+    """
+    rows = parse_nhanes_doc_variables(html, "https://example.org/DEMO_J.htm")
+    assert rows[0]["label"] == "Gender"
+    assert json.loads(rows[0]["value_meanings"]) == [
+        {"code": "1", "meaning": "Male"},
+        {"code": "2", "meaning": "Female"},
+        {"code": ".", "meaning": "Missing"},
+    ]
+
+
 def test_get_file_links_for_component_filters_years(monkeypatch):
     # On NHANES website, the files are linked in this format:
     expected_html = """
@@ -70,3 +95,49 @@ def test_get_file_links_for_component_filters_years(monkeypatch):
     assert links[0]["years"] == "2017-2018"
     assert links[0]["doc_url"].endswith("/P_DEMO.htm")
     assert links[0]["xpt_url"].endswith("/P_DEMO.xpt")
+
+
+def test_download_includes_codebooks_by_default(tmp_path, monkeypatch):
+    entry = {
+        "years": "2017-2018",
+        "xpt_url": "https://example.org/2017/DEMO_J.xpt",
+        "doc_url": "https://example.org/2017/DEMO_J.htm",
+    }
+    monkeypatch.setattr("healthdata.nhanes.downloader.get_file_links_for_component",
+        lambda *args, **kwargs: [entry])
+    data_downloads = []
+    doc_downloads = []
+    monkeypatch.setattr("healthdata.nhanes.downloader.download_file",
+        lambda url, path: data_downloads.append((url, path)))
+    monkeypatch.setattr("healthdata.nhanes.downloader.download_and_extract_docs",
+        lambda url, folder: doc_downloads.append((url, folder)))
+
+    download_nhanes_data(str(tmp_path), components=["Demographics"], years=["2017-2018"])
+
+    folder = tmp_path / "2017-2018" / "2017" / "Demographics"
+    assert data_downloads == [(entry["xpt_url"], str(folder / "DEMO_J.xpt"))]
+    assert doc_downloads == [(entry["doc_url"], str(folder))]
+
+    doc_downloads.clear()
+    download_nhanes_data(str(tmp_path), components=["Demographics"],
+        years=["2017-2018"], with_docs=False)
+    assert len(data_downloads) == 2
+    assert doc_downloads == []
+
+
+def test_codebook_helper_saves_only_documentation(tmp_path, monkeypatch):
+    html = """Variable Name: RIAGENDR
+    SAS Label: Gender
+    English Text: Gender of the participant.
+    Target: Both males and females
+    """
+    monkeypatch.setattr("healthdata.nhanes.downloader.requests.get",
+        lambda url: _DummyResponse(html))
+
+    download_and_extract_docs("https://example.org/2017/DEMO_J.htm", str(tmp_path))
+
+    assert [path.name for path in tmp_path.iterdir()] == ["DEMO_J_variables.csv"]
+    with (tmp_path / "DEMO_J_variables.csv").open(newline="", encoding="utf-8") as source:
+        rows = list(csv.DictReader(source))
+    assert rows[0]["variable_name"] == "RIAGENDR"
+    assert rows[0]["label"] == "Gender"

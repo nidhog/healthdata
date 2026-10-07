@@ -2,13 +2,13 @@ import logging
 import os
 import re
 import json
-from datetime import datetime
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import pandas as pd
 
+from .utils import resolve_local_file
 from .downloader import download_nhanes_data
+from .search import search_nhanes_local_data as search_nhanes_local_data, search_variables as search_variables
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,40 @@ def snake_case(s: str) -> str:
 	return s or "unnamed"
 
 
+def _categorical_labels(series: pd.Series, meaning_list: Any) -> pd.Series:
+	"""Translate discrete numeric codes in a pandas Series into categorical labels based on the provided meaning list.
+	
+	Args:
+		series (pd.Series): The pandas Series containing discrete numeric codes.
+		meaning_list (Any): A list of dictionaries mapping 'code' to 'meaning'.
+
+	Returns:
+		pd.Series: A pandas Series with categorical labels applied where applicable.
+	"""
+	if not isinstance(meaning_list, list) or not meaning_list:
+		return series
+	labels = {}
+	for entry in meaning_list:
+		if not isinstance(entry, dict) or "code" not in entry or "meaning" not in entry:
+			return series
+		code = str(entry["code"]).strip()
+		if code == ".":
+			continue
+		try:
+			key = float(code)
+		except ValueError:
+			return series
+		labels[key] = str(entry["meaning"])
+	if not labels:
+		return series
+	translated = series.map(lambda value: labels.get(value, value) if pd.notna(value) else value)
+	categories = list(dict.fromkeys(labels.values()))
+	for value in translated.dropna().unique():
+		if value not in categories:
+			categories.append(value)
+	return pd.Series(pd.Categorical(translated, categories=categories), index=series.index, name=series.name)
+
+
 def read_nhanes_data(
 	file_path: str,
 	use_csv_for_labels: bool = True,
@@ -28,6 +62,7 @@ def read_nhanes_data(
 	allow_download_prompt: bool = True,
 	attach_documentation: bool = True,
 	add_documentation_column: bool = False,
+	decode_categories: bool = False,
 ) -> pd.DataFrame:
 	"""
 	Read an NHANES XPT file and optionally rename columns using <dataset>_variables.csv.
@@ -39,7 +74,10 @@ def read_nhanes_data(
 		df.attrs['documentation'] and a docs table under df.attrs['documentation_df'].
 	add_documentation_column: If True, add a 'documentation' column where each row
 		contains the same per-column documentation dictionary.
+	decode_categories: If True, translate discrete numeric codes into pandas categoricals.
+		Continuous variables and unknown codes are preserved. Missing values aren't modified.
 	"""
+	file_path = resolve_local_file(file_path)
 	if not os.path.exists(file_path):
 		if allow_download_prompt:
 			parts = file_path.split(os.sep)
@@ -65,6 +103,7 @@ def read_nhanes_data(
 							output_dir=output_dir,
 							years=[cycle_candidate],
 						)
+						file_path = resolve_local_file(file_path)
 						if not os.path.exists(file_path):
 							raise FileNotFoundError(
 								f"Download completed but file is still missing: {file_path}"
@@ -83,7 +122,7 @@ def read_nhanes_data(
 	except Exception as e:
 		raise IOError(f"Failed to read XPT file {file_path}: {e}")
 
-	if use_csv_for_labels or attach_documentation:
+	if use_csv_for_labels or attach_documentation or decode_categories:
 		base_name = os.path.splitext(os.path.basename(file_path))[0]
 		doc_csv_name = f"{base_name}_variables.csv"
 
@@ -93,7 +132,7 @@ def read_nhanes_data(
 
 		doc_csv_path = None
 		for d in search_dirs:
-			candidate = os.path.join(d, doc_csv_name)
+			candidate = resolve_local_file(os.path.join(d, doc_csv_name))
 			if os.path.exists(candidate):
 				doc_csv_path = candidate
 				break
@@ -124,7 +163,7 @@ def read_nhanes_data(
 							logger.warning("Failed to download docs for %s: %s", file_path, e)
 
 						for d in search_dirs:
-							candidate = os.path.join(d, doc_csv_name)
+							candidate = resolve_local_file(os.path.join(d, doc_csv_name))
 							if os.path.exists(candidate):
 								doc_csv_path = candidate
 								break
@@ -221,6 +260,10 @@ def read_nhanes_data(
 			used_names.add(final_name)
 			rename_map[original_col] = final_name
 
+		if decode_categories:
+			for column in df.columns:
+				df[column] = _categorical_labels(df[column], doc_records.get(column, {}).get("value_meanings"))
+
 		if use_csv_for_labels:
 			df = df.rename(columns=rename_map)
 
@@ -260,185 +303,3 @@ def get_column_doc(df: pd.DataFrame, column_name: str) -> Optional[Dict[str, Any
 				return entry
 
 	return None
-
-
-def search_nhanes_local_data(
-	search_dir: str,
-	*,
-	recursive: bool = True,
-	include_extensions: Optional[List[str]] = None,
-	only_nhanes_like: bool = True,
-	print_results: bool = True,
-) -> pd.DataFrame:
-	"""Search a local directory for NHANES-relevant files and return an inventory DataFrame."""
-	root = Path(search_dir).expanduser().resolve()
-	if not root.exists() or not root.is_dir():
-		raise NotADirectoryError(f"search_dir is not a valid directory: {search_dir}")
-
-	exts = include_extensions or ["xpt", "csv"]
-	exts = {("." + e.lower().lstrip(".")) for e in exts}
-
-	cycle_re = re.compile(r"^\d{4}-\d{4}$")
-	year_re = re.compile(r"^\d{4}$")
-
-	def infer_parts(p: Path) -> Dict[str, Optional[str]]:
-		parts = list(p.parts)
-		cycle = None
-		year = None
-		component = None
-
-		cycle_idx = None
-		for i, name in enumerate(parts):
-			if cycle_re.match(name):
-				cycle = name
-				cycle_idx = i
-				break
-
-		if cycle_idx is not None:
-			if cycle_idx + 1 < len(parts) and year_re.match(parts[cycle_idx + 1]):
-				year = parts[cycle_idx + 1]
-				if cycle_idx + 2 < len(parts):
-					component = parts[cycle_idx + 2]
-			else:
-				if cycle_idx + 1 < len(parts):
-					component = parts[cycle_idx + 1]
-
-		return {"cycle": cycle, "year": year, "component": component}
-
-	def classify(p: Path) -> str:
-		name = p.name.lower()
-		if p.suffix.lower() == ".xpt":
-			return "data-xpt"
-		if name.endswith("_variables.csv"):
-			return "doc-variables-csv"
-		if p.suffix.lower() == ".csv":
-			return "csv"
-		return "other"
-
-	def nhanes_like_filter(p: Path) -> bool:
-		if p.suffix.lower() == ".xpt" or p.name.lower().endswith("_variables.csv"):
-			return True
-
-		if p.suffix.lower() != ".csv":
-			return False
-
-		meta = infer_parts(p)
-		if meta.get("cycle"):
-			return True
-
-		stem = p.stem
-		if stem.endswith("_variables"):
-			xpt_candidate = p.with_name(stem.replace("_variables", "") + ".xpt")
-			if xpt_candidate.exists():
-				return True
-
-		return False
-
-	it = root.rglob("*") if recursive else root.glob("*")
-
-	rows: List[Dict[str, Any]] = []
-	for p in it:
-		if not p.is_file():
-			continue
-		if p.suffix.lower() not in exts:
-			continue
-		if only_nhanes_like and not nhanes_like_filter(p):
-			continue
-
-		meta = infer_parts(p)
-		kind = classify(p)
-
-		try:
-			st = p.stat()
-			size_kb = st.st_size / 1024
-			mtime = datetime.fromtimestamp(st.st_mtime)
-		except OSError:
-			size_kb = None
-			mtime = None
-
-		rows.append(
-			{
-				"type": kind,
-				"cycle": meta.get("cycle"),
-				"year": meta.get("year"),
-				"component": meta.get("component"),
-				"file": p.name,
-				"stem": p.stem,
-				"ext": p.suffix.lower().lstrip("."),
-				"size_kb": None if size_kb is None else round(size_kb, 1),
-				"modified": None if mtime is None else mtime.strftime("%Y-%m-%d %H:%M"),
-				"path": str(p),
-			}
-		)
-
-	df = pd.DataFrame(rows)
-	if df.empty:
-		if print_results:
-			print(f"No NHANES-like files found in: {root}")
-		return df
-
-	sort_cols = ["cycle", "component", "year", "type", "file"]
-	sort_cols = [c for c in sort_cols if c in df.columns]
-	df = df.sort_values(sort_cols, na_position="last").reset_index(drop=True)
-
-	if print_results:
-		_print_nhanes_search_results(df, root=str(root))
-
-	return df
-
-
-def _print_nhanes_search_results(df: pd.DataFrame, root: str) -> None:
-	"""Pretty-printer using rich when available, otherwise pandas text output."""
-	title = f"NHANES local files found in: {root}  (n={len(df)})"
-
-	try:
-		from rich.console import Console
-		from rich.table import Table
-		from rich.text import Text
-
-		console = Console()
-
-		table = Table(title=title, show_lines=False, header_style="bold")
-		table.add_column("Type", style="cyan", no_wrap=True)
-		table.add_column("Cycle", style="magenta", no_wrap=True)
-		table.add_column("Year", style="magenta", no_wrap=True)
-		table.add_column("Component", style="green")
-		table.add_column("File", style="white")
-		table.add_column("Size KB", justify="right")
-		table.add_column("Modified", style="dim", no_wrap=True)
-		table.add_column("Path", style="dim")
-
-		for _, r in df.iterrows():
-			table.add_row(
-				str(r.get("type") or ""),
-				str(r.get("cycle") or ""),
-				str(r.get("year") or ""),
-				str(r.get("component") or ""),
-				str(r.get("file") or ""),
-				"" if pd.isna(r.get("size_kb")) else str(r.get("size_kb")),
-				str(r.get("modified") or ""),
-				str(r.get("path") or ""),
-			)
-
-		counts = df["type"].value_counts(dropna=False).to_dict()
-		summary = ", ".join([f"{k}={v}" for k, v in counts.items()])
-		console.print(table)
-		console.print(Text(f"Summary: {summary}", style="bold"))
-
-		return
-
-	except Exception:
-		pass
-
-	# TODO: log instead of print
-	print(title)
-	show_cols = ["type", "cycle", "year", "component", "file", "size_kb", "modified", "path"]
-	show_cols = [c for c in show_cols if c in df.columns]
-	df_out = df[show_cols].copy()
-
-	with pd.option_context("display.max_rows", 200, "display.max_colwidth", 120, "display.width", 200):
-		print(df_out.to_string(index=False))
-
-	counts = df["type"].value_counts(dropna=False).to_dict()
-	summary = ", ".join([f"{k}={v}" for k, v in counts.items()])
-	print(f"Summary: {summary}")

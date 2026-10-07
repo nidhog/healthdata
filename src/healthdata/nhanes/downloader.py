@@ -64,6 +64,31 @@ def parse_nhanes_doc_variables(doc_html: str, doc_url: str):
     TODO: add patterns as config instead?
     """
     soup = BeautifulSoup(doc_html, "html.parser")
+    value_tables = {}
+    for table in soup.find_all("table"):
+        headers = [cell.get_text(" ", strip=True).lower() for cell in table.select("tr th")]
+        if "code or value" not in headers or "value description" not in headers:
+            continue
+        preceding = table.find_previous(string=re.compile(r"Variable Name:"))
+        if preceding is None:
+            continue
+        variable_text = preceding.parent.get_text(" ", strip=True)
+        if not re.search(r"Variable Name:\s*[A-Za-z0-9_]+", variable_text):
+            variable_text += " " + preceding.parent.find_next().get_text(" ", strip=True)
+        variable_match = re.search(r"Variable Name:\s*([A-Za-z0-9_]+)", variable_text)
+        if not variable_match:
+            continue
+        meanings = []
+        for table_row in table.select("tr"):
+            cells = table_row.find_all("td", recursive=False)
+            if len(cells) < len(headers):
+                continue
+            meanings.append({
+                "code": cells[headers.index("code or value")].get_text(" ", strip=True),
+                "meaning": cells[headers.index("value description")].get_text(" ", strip=True),
+            })
+        value_tables[variable_match.group(1)] = meanings
+        table.decompose()
     text = soup.get_text("\n")
     text = re.sub(r"\r", "", text)
     text = re.sub(r"[ \t]+", " ", text)
@@ -94,7 +119,7 @@ def parse_nhanes_doc_variables(doc_html: str, doc_url: str):
         label = re.sub(r"\s+", " ", label_match.group("label")).strip() if label_match else ""
         desc = re.sub(r"\s+", " ", desc_match.group("desc")).strip() if desc_match else ""
 
-        value_meanings = []
+        value_meanings = value_tables.get(var, [])
         value_section = re.search(
             r"Code or Value\s*(?P<section>.*?)(?=\n\s*Variable Name:|\Z)",
             chunk,
@@ -136,6 +161,10 @@ def parse_nhanes_doc_variables(doc_html: str, doc_url: str):
 
 
 def download_and_extract_docs(doc_url: str, out_dir: str):
+    """Save one CDC codebook as a variables CSV; does not download XPT data.
+
+    Use download_nhanes_data for the usual data-and-documentation download.
+    """
     r = requests.get(doc_url)
     r.raise_for_status()
     rows = parse_nhanes_doc_variables(r.text, doc_url)
@@ -244,7 +273,10 @@ def download_nhanes_data(
     base_search_url: str = DEFAULT_BASE_SEARCH_URL,
     base_domain: str = DEFAULT_BASE_DOMAIN,
 ):
-    """Download NHANES XPT files and optional docs for components and years."""
+    """Download NHANES XPT files and their codebooks for components and years.
+
+    Documentation is included by default. Set with_docs=False for data only.
+    """
     ensure_dir(output_dir)
 
     for comp in components:

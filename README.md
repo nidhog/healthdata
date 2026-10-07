@@ -3,6 +3,8 @@ The Health Data Downloader is a Python package that makes it easy to download an
 
 Current data sources supported:
 * **NHANES** National Health and Nutrition Examination Survey (CDC)
+
+It enables you to search, download and read data that also includes the meaning of codes and values, as well as storing categorical data with meaning such as Female/Male instead of 1/0.
 ## The NHANES Submodule
 If you want to download health data from NHANES this module can help you not only download the data but also add documentation from the official NHANES website, and read this data into a pandas dataframe.
 
@@ -37,17 +39,40 @@ download_nhanes_data(
 )
 ```
 
-You can read the data you already downloaded (you will be prompted to download it if it doesn't exist)
+You can read this data now and inspect **the official documentation directly in the dataframe**:
+
 ```python
-from healthdata.nhanes.reader import read_nhanes_data, search_nhanes_local_data
+from healthdata.nhanes import read_nhanes_data, get_column_doc
 
-df = read_nhanes_data("nhanes_data/2017-2018/2017/Demographics/DEMO_J.XPT")
-print(df.head())
-
-inventory = search_nhanes_local_data(search_dir="nhanes_data")
-print(inventory.head())
+df = read_nhanes_data(
+    "nhanes_data/2017-2018/2017/Demographics/DEMO_J.XPT",
+    decode_categories=True,
+    allow_download_prompt=False,
+)
+print(df["gender"].head())  # Male/Female, as a pandas categorical instead of 1/0
+print(get_column_doc(df, "gender"))
+print(df.attrs["documentation_df"].head())
 ```
-That's all folks! Now you will see that your dataframe already includes documentation.
+
+You can also **search the CDC catalogue for variables like "blood pressure"** without downloading data files:
+
+```python
+from healthdata.nhanes import search_variables
+
+matches = search_variables("blood pressure", component="Examination", years=["2017-2018"])
+print(matches[["variable_name", "description", "dataset", "cycle"]].head())
+```
+
+Or search your downloaded codebooks offline (local data):
+
+```python
+matches = search_variables("gender", search_dir="nhanes_data")
+print(matches[["variable_name", "dataset", "cycle", "data_path"]].head())
+```
+
+See the [NHANES guide here](docs/nhanes/getting-started.md) for more info on access to docs, categorical data, and search options, or [how it works](docs/nhanes/how-it-works.md)
+for the data flow.
+
 ## Current caveats
 - HTML codebook parsing depends on current NHANES page text patterns. CDC page structure changes may require parser updates.
 - Network errors and partial downloads are not retried automatically.
