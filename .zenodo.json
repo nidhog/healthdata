@@ -1,0 +1,22 @@
+{
+  "title": "healthdata: Download and read NHANES health survey data in Python",
+  "upload_type": "software",
+  "description": "<p>healthdata is a Python package that finds, downloads and reads NHANES (National Health and Nutrition Examination Survey) data files from the CDC. It saves each file's codebook alongside the data, renames cryptic variable codes to readable column names, and attaches the documentation for every variable to the resulting pandas DataFrame.</p><p>Source code: https://github.com/nidhog/healthdata. Package: https://pypi.org/project/healthdata/.</p>",
+  "creators": [
+    {
+      "name": "Elouafiq, Ismail"
+    }
+  ],
+  "license": "mit",
+  "access_right": "open",
+  "keywords": [
+    "health data",
+    "NHANES",
+    "CDC",
+    "public health",
+    "health survey",
+    "open data",
+    "pandas",
+    "Python"
+  ]
+}

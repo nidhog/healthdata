@@ -161,9 +161,8 @@ def parse_nhanes_doc_variables(doc_html: str, doc_url: str):
 
 
 def download_and_extract_docs(doc_url: str, out_dir: str):
-    """Save one CDC codebook as a variables CSV; does not download XPT data.
-
-    Use download_nhanes_data for the usual data-and-documentation download.
+    """Save one CDC codebook as a variables CSV (does not download XPT data).
+    Use download_nhanes_data for the usual data-and-documentation download
     """
     r = requests.get(doc_url)
     r.raise_for_status()

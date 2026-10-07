@@ -19,6 +19,10 @@ This project provides workflows that enable you to:
 - search and summarize local files if they are already downloaded
 
 ## Quick start
+For a runnable walkthrough of variable search, downloads, DataFrame documentation,
+and labeled categories, open the [NHANES download notebook](notebooks/nhanes_download.ipynb)
+or [run it in Google Colab](https://colab.research.google.com/github/nidhog/healthdata/blob/main/notebooks/nhanes_download.ipynb).
+
 In thie quick start we will:
 1. Install required packages.
 2. Run a download.

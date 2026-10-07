@@ -42,6 +42,7 @@ def search_variables(
 
 	Matches are case-insensitive, literal text. Component and year filters
 	work with either source.
+	TODO: add synonym aware search because currently it only matches literal text
 	"""
 	if not isinstance(query, str) or not query.strip():
 		raise ValueError("query must be a non-empty string")
