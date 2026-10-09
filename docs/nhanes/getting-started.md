@@ -36,6 +36,24 @@ Existing XPT files are skipped. Codebooks (containing documentation about the xp
 (`allow_download_prompt=False` makes missing files raise an error instead of
 getting an interactive question to download them)
 
+### Download one Dataset only
+
+Use `download_nhanes_dataset` when you know the specific dataset, component, and full cycle you need. Unlike `download_nhanes_data`, it downloads only that dataset (and its codebook by default).
+
+```python
+from healthdata.nhanes import download_nhanes_dataset, read_nhanes_data
+
+path = download_nhanes_dataset(
+    dataset="LBXSAL",
+    component="Laboratory",
+    cycle="2017-2018",
+    output_dir="nhanes_data",
+)
+df = read_nhanes_data(str(path), use_csv_for_labels=False, allow_download_prompt=False)
+```
+
+Pass the full cycle label (for example, `"2017-2018"`), not just a year that could match multiple cycles. Use `with_docs=False` to download only the XPT file (without documentation codebooks).
+
 ### Download a Codebook (data documentation and meanings) Only
 
 If you already have an XPT file and only need its documentation, use the

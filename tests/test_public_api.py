@@ -12,6 +12,7 @@ from healthdata.nhanes import downloader, reader, search
 
 def test_nhanes_public_api_exports_main_functions():
     assert callable(nhanes.download_nhanes_data)
+    assert callable(nhanes.download_nhanes_dataset)
     assert callable(nhanes.get_file_links_for_component)
     assert callable(nhanes.read_nhanes_data)
     assert callable(nhanes.get_column_doc)
@@ -23,6 +24,7 @@ def test_codebook_helper_stays_available_for_existing_imports():
     assert nhanes.download_and_extract_docs is downloader.download_and_extract_docs
     assert "download_and_extract_docs" not in nhanes.__all__
     assert "download_nhanes_data" in nhanes.__all__
+    assert "download_nhanes_dataset" in nhanes.__all__
 
 
 def test_search_exports_preserve_reader_imports():

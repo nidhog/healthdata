@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import json
+from pathlib import Path
 from typing import List, Optional, Union
 from urllib.parse import urlparse
 
@@ -288,26 +289,69 @@ def download_nhanes_data(
         print(f"> [FOUND] Found {len(entries)} datasets for component '{comp}' (matching years: {years})")
 
         for e in entries:
-            xpt_url = e["xpt_url"]
-            doc_url = e["doc_url"]
-            cycle = e["years"] or "unknown"
+            _download_dataset_entry(e, comp, output_dir, with_docs)
 
-            date = extract_date_from_url(doc_url)
 
-            out_subdir = os.path.join(output_dir, cycle, date, comp)
-            ensure_dir(out_subdir)
+def download_nhanes_dataset(
+    dataset: str,
+    component: str,
+    cycle: str,
+    output_dir: str,
+    with_docs: bool = True,
+    base_search_url: str = DEFAULT_BASE_SEARCH_URL,
+    base_domain: str = DEFAULT_BASE_DOMAIN,
+) -> Path:
+    """Download one NHANES dataset only (and optionally its codebook)
 
-            filename = xpt_url.split("/")[-1]
-            out_path = os.path.join(out_subdir, filename)
+    ``cycle`` must be the full cycle label, such as ``"2017-2018"``. The
+    returned path points to the XPT file. Data and documentation use the same
+    directory layout as :func:`download_nhanes_data`.
+    """
+    entries = get_file_links_for_component(
+        component,
+        years=[cycle],
+        base_search_url=base_search_url,
+        base_domain=base_domain,
+    )
 
-            if os.path.exists(out_path):
-                print(f"> [CHECK] Already downloaded: {cycle}/{filename}")
-            else:
-                print(f"> [.....] Downloading {cycle}/{filename}")
-                download_file(xpt_url, out_path)
+    entry = next(
+        (
+            item
+            for item in entries
+            if item["years"] == cycle
+            and Path(urlparse(item["xpt_url"]).path).stem.casefold() == dataset.casefold()
+        ),
+        None,
+    )
+    if entry is None:
+        raise LookupError(
+            f"NHANES has no dataset named {dataset!r} in {component} / {cycle}."
+        )
 
-            if with_docs:
-                try:
-                    download_and_extract_docs(doc_url, out_subdir)
-                except Exception as err:
-                    logger.warning("Failed to extract docs for %s (%s)", doc_url, err)
+    return _download_dataset_entry(entry, component, output_dir, with_docs)
+
+
+def _download_dataset_entry(entry: dict, component: str, output_dir: str, with_docs: bool) -> Path:
+    """Download a single NHANES dataset entry and optionally its docs."""
+    xpt_url = entry["xpt_url"]
+    doc_url = entry["doc_url"]
+    cycle = entry["years"] or "unknown"
+    date = extract_date_from_url(doc_url)
+    out_subdir = os.path.join(output_dir, cycle, date, component)
+    ensure_dir(out_subdir)
+
+    filename = os.path.basename(urlparse(xpt_url).path)
+    out_path = os.path.join(out_subdir, filename)
+    if os.path.exists(out_path):
+        print(f"> [CHECK] Already downloaded: {cycle}/{filename}")
+    else:
+        print(f"> [.....] Downloading {cycle}/{filename}")
+        download_file(xpt_url, out_path)
+
+    if with_docs:
+        try:
+            download_and_extract_docs(doc_url, out_subdir)
+        except Exception as err:
+            logger.warning("Failed to extract docs for %s (%s)", doc_url, err)
+
+    return Path(out_path)

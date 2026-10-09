@@ -1,9 +1,11 @@
 import csv
 import json
+import pytest
 
 from healthdata.nhanes.downloader import (
     download_and_extract_docs,
     download_nhanes_data,
+    download_nhanes_dataset,
     extract_date_from_url,
     get_file_links_for_component,
     parse_nhanes_doc_variables,
@@ -123,6 +125,88 @@ def test_download_includes_codebooks_by_default(tmp_path, monkeypatch):
         years=["2017-2018"], with_docs=False)
     assert len(data_downloads) == 2
     assert doc_downloads == []
+
+
+def test_download_specific_dataset_downloads_data_and_docs(tmp_path, monkeypatch):
+    entry = {
+        "years": "2017-2018",
+        "xpt_url": "https://example.org/2017/DEMO_J.XPT",
+        "doc_url": "https://example.org/2017/DEMO_J.htm",
+    }
+    lookup_calls = []
+    data_downloads = []
+    doc_downloads = []
+
+    def fake_get_links(component, **kwargs):
+        lookup_calls.append((component, kwargs))
+        return [entry]
+
+    monkeypatch.setattr("healthdata.nhanes.downloader.get_file_links_for_component", fake_get_links)
+    monkeypatch.setattr(
+        "healthdata.nhanes.downloader.download_file",
+        lambda url, path: data_downloads.append((url, path)),
+    )
+    monkeypatch.setattr(
+        "healthdata.nhanes.downloader.download_and_extract_docs",
+        lambda url, folder: doc_downloads.append((url, folder)),
+    )
+
+    path = download_nhanes_dataset(
+        dataset="demo_j",
+        component="Demographics",
+        cycle="2017-2018",
+        output_dir=str(tmp_path),
+    )
+
+    expected_path = tmp_path / "2017-2018" / "2017" / "Demographics" / "DEMO_J.XPT"
+    assert path == expected_path
+    assert lookup_calls[0][0] == "Demographics"
+    assert lookup_calls[0][1]["years"] == ["2017-2018"]
+    assert data_downloads == [(entry["xpt_url"], str(expected_path))]
+    assert doc_downloads == [(entry["doc_url"], str(expected_path.parent))]
+
+
+def test_download_specific_dataset_can_skip_docs(tmp_path, monkeypatch):
+    entry = {
+        "years": "2017-2018",
+        "xpt_url": "https://example.org/2017/DEMO_J.XPT",
+        "doc_url": "https://example.org/2017/DEMO_J.htm",
+    }
+    doc_downloads = []
+    monkeypatch.setattr(
+        "healthdata.nhanes.downloader.get_file_links_for_component",
+        lambda *args, **kwargs: [entry],
+    )
+    monkeypatch.setattr("healthdata.nhanes.downloader.download_file", lambda *args: None)
+    monkeypatch.setattr(
+        "healthdata.nhanes.downloader.download_and_extract_docs",
+        lambda *args: doc_downloads.append(args),
+    )
+
+    download_nhanes_dataset(
+        dataset="DEMO_J",
+        component="Demographics",
+        cycle="2017-2018",
+        output_dir=str(tmp_path),
+        with_docs=False,
+    )
+
+    assert doc_downloads == []
+
+
+def test_download_specific_dataset_raises_for_unknown_dataset(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "healthdata.nhanes.downloader.get_file_links_for_component",
+        lambda *args, **kwargs: [],
+    )
+
+    with pytest.raises(LookupError, match="UNKNOWN.*Laboratory / 2017-2018"):
+        download_nhanes_dataset(
+            dataset="UNKNOWN",
+            component="Laboratory",
+            cycle="2017-2018",
+            output_dir=str(tmp_path),
+        )
 
 
 def test_codebook_helper_saves_only_documentation(tmp_path, monkeypatch):

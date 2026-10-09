@@ -23,6 +23,9 @@ For a runnable walkthrough of variable search, downloads, DataFrame documentatio
 and labeled categories, open the [NHANES download notebook](notebooks/nhanes_download.ipynb)
 or [run it in Google Colab](https://colab.research.google.com/github/nidhog/healthdata/blob/main/notebooks/nhanes_download.ipynb).
 
+For a focused laboratory example, use the [hs-CRP notebook](notebooks/nhanes_laboratory.ipynb)
+or [open it in Colab](https://colab.research.google.com/github/nidhog/healthdata/blob/main/notebooks/nhanes_laboratory.ipynb).
+
 In thie quick start we will:
 1. Install required packages.
 2. Run a download.
@@ -93,3 +96,8 @@ For paid support or consulting, contact the author at contact@ismail.bio.
 [Ismail Elouafiq](https://ismail.bio)
 
 Contact: contact@ismail.bio
+
+## Citing healthdata
+If you use healthdata in your research, please cite it. Use the "Cite this repository" button on GitHub, or:
+
+Elouafi
